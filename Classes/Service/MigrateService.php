@@ -58,6 +58,7 @@ class MigrateService extends AbstractService {
 		'description' => 'description',
 		'alt_text' => 'alternative',
 		'categories' => 'categories',
+		'sys_language_uid' => 'sys_language_uid',
 	);
 
 	/**

@@ -47,6 +47,7 @@ class MigrateMetadataService extends AbstractService {
 		'hpixels' => 'width',
 		'title' => 'title',
 		'vpixels' => 'height',
+		'sys_language_uid' => 'sys_language_uid',
 	);
 
 	/**
@@ -136,11 +137,18 @@ class MigrateMetadataService extends AbstractService {
 		$this->isInstalledMedia = ExtensionManagementUtility::isLoaded('media');
 
 		while ($record = $this->database->sql_fetch_assoc($res)) {
+			$fileMetaData = $this->createArrayForUpdateSysFileMetadataRecord($record);
 			$this->database->exec_UPDATEquery(
 				'sys_file_metadata',
-				'uid = ' . $record['metadata_uid'],
-				$this->createArrayForUpdateSysFileMetadataRecord($record)
+				'uid = ' . $record['metadata_uid'] . ' AND sys_language_uid = ' . $record['sys_language_uid'],
+				$fileMetaData
 			);
+				// if no SQL error and still no record has been updated, then it means that
+				// the record does not exist and must be created e.g. localized DAM record.
+			if (($this->database->sql_error() == '') && $this->database->sql_affected_rows() == 0) {
+				$this->updateArrayForInsertSysFileRecord($fileMetaData, $record);
+				$this->database->exec_INSERTquery('sys_file_metadata', $fileMetaData);
+			}
 
 			$this->database->exec_UPDATEquery(
 				'sys_file',
@@ -165,7 +173,7 @@ class MigrateMetadataService extends AbstractService {
 		return $this->database->exec_SELECTquery(
 			'DISTINCT m.uid AS metadata_uid, f.uid as file_uid, f._migrateddamuid AS dam_uid, d.*',
 			'sys_file f, sys_file_metadata m, tx_dam d',
-			'm.file=f.uid AND f._migrateddamuid=d.uid AND f._migrateddamuid > 0'
+			'm.file=f.uid AND ((f._migrateddamuid = d.uid OR f._migrateddamuid = d.l18n_parent)) AND f._migrateddamuid > 0'
 		);
 	}
 
@@ -191,6 +199,8 @@ class MigrateMetadataService extends AbstractService {
 			}
 		}
 
+		$updateData['tstamp'] = $_SERVER['REQUEST_TIME'];
+
 		return $updateData;
 	}
 
@@ -214,5 +224,25 @@ class MigrateMetadataService extends AbstractService {
 		}
 
 		return $updateData;
+	}
+
+	/**
+	 * Update provided array with necessary fields required to create a new `sys_file_metadata` record.
+	 *
+	 * @param array $fileMetaData       File meta data.
+	 * @param array $damRecord          DAM record file with UIDs for corresponding
+	 *                                  `sys_file` and `sys_file_metadata` records.
+	 *
+	 * @return void
+	 */
+	protected function updateArrayForInsertSysFileRecord(array &$fileMetaData, array $damRecord) {
+		$fileMetaData['file'] = $damRecord['file_uid'];
+		$fileMetaData['categories'] = 0;
+		$fileMetaData['l10n_parent'] = (intval($damRecord['sys_language_uid']) > 0) ? $damRecord['metadata_uid'] : 0;
+
+		if ($this->isInstalledFileMetadata) {
+			$fileMetaData['note'] = $fileMetaData['note'] ? $fileMetaData['note'] : '';
+			$fileMetaData['caption'] = $fileMetaData['caption'] ? $fileMetaData['caption'] : '';
+		}
 	}
 }
