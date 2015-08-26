@@ -226,6 +226,8 @@ class MigrateRelationsService extends AbstractService {
 				sys_file._migrateddamuid = tx_dam_mm_ref.uid_local
 			JOIN sys_file_metadata ON
 				sys_file.uid = sys_file_metadata.file
+            JOIN tt_content ON
+                (tt_content.sys_language_uid = sys_file_metadata.sys_language_uid AND tx_dam_mm_ref.uid_foreign = tt_content.uid)
 				',
                 $where,
                 '',
